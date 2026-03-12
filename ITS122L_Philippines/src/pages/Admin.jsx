@@ -23,9 +23,20 @@ const Admin = () => {
   const [annForm, setAnnForm] = useState({ title: '', body: '', tag: 'event' });
   const [roomForm, setRoomForm] = useState({ name: '', type: 'deluxe', pricePerNight: '', capacity: '', description: '', available: true });
 
-  useEffect(() => {
-    if (!loading && !user) navigate('/login');
-  }, [user, loading, navigate]);
+useEffect(() => {
+  if (loading) return;
+  if (!user) { navigate('/login'); return; }
+
+  // Check Firestore for admin role
+  const checkAdmin = async () => {
+    const { getDoc, doc } = await import('firebase/firestore');
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (!userDoc.exists() || userDoc.data().role !== 'admin') {
+      navigate('/'); // redirect non-admins to home
+    }
+  };
+  checkAdmin();
+}, [user, loading, navigate]);
 
   // Real-time listeners - updates instantly when new booking comes in
   useEffect(() => {
