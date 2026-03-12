@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../firebase/AuthContext';
-import { collection, addDoc, onSnapshot, serverTimestamp, query, orderBy } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, serverTimestamp, query, orderBy, doc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
 const Testimonials = () => {
@@ -10,9 +10,22 @@ const Testimonials = () => {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
   const [form, setForm] = useState({ name: '', rating: 5, roomType: '', message: '' });
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({ rating: 5, roomType: '', message: '' });
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   useEffect(() => {
     if (user) setForm(f => ({ ...f, name: user.displayName || user.email?.split('@')[0] || '' }));
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) { setIsAdmin(false); return; }
+    const check = async () => {
+      const snap = await getDoc(doc(db, 'users', user.uid));
+      setIsAdmin(snap.exists() && snap.data().role?.trim() === 'admin');
+    };
+    check();
   }, [user]);
 
   useEffect(() => {
@@ -21,6 +34,8 @@ const Testimonials = () => {
   }, []);
 
   const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500); };
+
+  const canModify = (t) => isAdmin || (user && user.uid === t.userId);
 
   const handleSubmit = async () => {
     if (!form.name || !form.message) return showToast('Please fill in your name and message.', 'error');
@@ -38,6 +53,32 @@ const Testimonials = () => {
       setForm({ name: user?.displayName || user?.email?.split('@')[0] || '', rating: 5, roomType: '', message: '' });
     } catch { showToast('Error submitting. Try again.', 'error'); }
     setSubmitting(false);
+  };
+
+  const startEdit = (t) => {
+    setEditingId(t.id);
+    setEditForm({ rating: t.rating || 5, roomType: t.roomType || '', message: t.message || '' });
+  };
+
+  const handleEdit = async (id) => {
+    if (!editForm.message || editForm.message.length < 20) return showToast('Message must be at least 20 characters.', 'error');
+    try {
+      await updateDoc(doc(db, 'testimonials', id), {
+        rating: editForm.rating,
+        roomType: editForm.roomType,
+        message: editForm.message,
+      });
+      showToast('Review updated!');
+      setEditingId(null);
+    } catch { showToast('Error updating. Try again.', 'error'); }
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      await deleteDoc(doc(db, 'testimonials', id));
+      showToast('Review deleted.');
+      setConfirmDelete(null);
+    } catch { showToast('Error deleting. Try again.', 'error'); }
   };
 
   const stars = (n) => Array.from({ length: 5 }, (_, i) => (
@@ -93,7 +134,7 @@ const Testimonials = () => {
               </div>
               <div style={S.fg}>
                 <label style={S.lbl}>Room / Service Experienced</label>
-                <input style={S.inp} value={form.roomType} onChange={e => setForm({ ...form, roomType: e.target.value })} placeholder="e.g. Beachfront Suite, Spa..." />
+                <input style={S.inp} value={form.roomType} onChange={e => setForm({ ...form, roomType: e.target.value })} placeholder="e.g. Sea View Room, Spa..." />
               </div>
             </div>
             <div style={S.fg}>
@@ -133,25 +174,81 @@ const Testimonials = () => {
           <div style={S.grid}>
             {testimonials.map((t, i) => (
               <div key={t.id} style={{ ...S.card, ...(i === 0 ? S.cardFeatured : {}) }}>
-                <div style={S.cardTop}>
-                  <div style={S.guestAvatar}>{(t.name || '?')[0].toUpperCase()}</div>
+                {/* Edit mode */}
+                {editingId === t.id ? (
                   <div>
-                    <div style={S.guestName}>{t.name}</div>
-                    {t.roomType && <div style={S.roomTag}>{t.roomType}</div>}
+                    <div style={S.fg}>
+                      <label style={S.lbl}>Rating</label>
+                      <div style={S.starPicker}>
+                        {[1,2,3,4,5].map(n => (
+                          <button key={n} style={S.starBtn} onClick={() => setEditForm({ ...editForm, rating: n })}>
+                            <span style={{ fontSize: 24, color: n <= editForm.rating ? '#c9a96e' : '#e0d8cc', cursor: 'pointer' }}>★</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={S.fg}>
+                      <label style={S.lbl}>Room / Service</label>
+                      <input style={S.inp} value={editForm.roomType} onChange={e => setEditForm({ ...editForm, roomType: e.target.value })} placeholder="Room or service..." />
+                    </div>
+                    <div style={S.fg}>
+                      <label style={S.lbl}>Review</label>
+                      <textarea style={{ ...S.inp, height: 100, resize: 'vertical' }} value={editForm.message} onChange={e => setEditForm({ ...editForm, message: e.target.value })} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                      <button style={S.cancelBtn} onClick={() => setEditingId(null)}>Cancel</button>
+                      <button style={S.submitBtn} onClick={() => handleEdit(t.id)}>Save</button>
+                    </div>
                   </div>
-                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 1 }}>{stars(t.rating || 5)}</div>
-                </div>
-                <p style={S.message}>"{t.message}"</p>
-                <div style={S.cardDate}>
-                  {t.createdAt?.toDate ? t.createdAt.toDate().toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Recently'}
-                </div>
+                ) : (
+                  <>
+                    <div style={S.cardTop}>
+                      <div style={S.guestAvatar}>{(t.name || '?')[0].toUpperCase()}</div>
+                      <div>
+                        <div style={S.guestName}>{t.name}</div>
+                        {t.roomType && <div style={S.roomTag}>{t.roomType}</div>}
+                      </div>
+                      <div style={{ marginLeft: 'auto', display: 'flex', gap: 1 }}>{stars(t.rating || 5)}</div>
+                    </div>
+                    <p style={S.message}>"{t.message}"</p>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={S.cardDate}>
+                        {t.createdAt?.toDate ? t.createdAt.toDate().toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Recently'}
+                      </div>
+                      {canModify(t) && (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button style={S.editBtn} onClick={() => startEdit(t)}>✏️ Edit</button>
+                          <button style={S.deleteBtn} onClick={() => setConfirmDelete(t.id)}>🗑️ Delete</button>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
 
+      {/* Delete confirmation modal */}
+      {confirmDelete && (
+        <div style={S.overlay} onClick={() => setConfirmDelete(null)}>
+          <div style={S.modal} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, marginBottom: 12 }}>Delete Review?</h3>
+            <p style={{ color: '#8a9e9a', fontSize: 14, marginBottom: 24 }}>This action cannot be undone.</p>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+              <button style={S.cancelBtn} onClick={() => setConfirmDelete(null)}>Cancel</button>
+              <button style={{ ...S.submitBtn, background: '#e05a4a' }} onClick={() => handleDelete(confirmDelete)}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && <div style={{ ...S.toast, borderLeft: `4px solid ${toast.type === 'error' ? '#e05a4a' : '#4caf8a'}` }}>{toast.msg}</div>}
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=DM+Sans:wght@300;400;500&display=swap');
+      `}</style>
     </div>
   );
 };
@@ -163,7 +260,7 @@ const S = {
   headerBadge: { display: 'inline-block', background: 'rgba(201,169,110,0.2)', border: '1px solid rgba(201,169,110,0.4)', color: '#c9a96e', padding: '5px 16px', borderRadius: 20, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 18 },
   pageTitle: { fontFamily: "'Cormorant Garamond',serif", fontSize: 'clamp(36px,5vw,56px)', fontWeight: 300, color: 'white', marginBottom: 12 },
   pageSub: { color: 'rgba(255,255,255,0.6)', fontSize: 15, marginBottom: 32 },
-  headerStats: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, background: 'rgba(255,255,255,0.08)', borderRadius: 16, padding: '20px 40px', display: 'inline-flex', marginBottom: 28 },
+  headerStats: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 0, background: 'rgba(255,255,255,0.08)', borderRadius: 16, padding: '20px 40px', marginBottom: 28 },
   headerStat: { textAlign: 'center', padding: '0 32px' },
   headerStatDivider: { width: 1, height: 48, background: 'rgba(255,255,255,0.2)' },
   bigRating: { fontFamily: "'Cormorant Garamond',serif", fontSize: 40, color: 'white', fontWeight: 300, display: 'block' },
@@ -187,15 +284,21 @@ const S = {
 
   grid: { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 22 },
   card: { background: 'white', borderRadius: 16, padding: 28, boxShadow: '0 2px 16px rgba(0,0,0,0.06)' },
-  cardFeatured: { gridColumn: 'span 1', border: '2px solid #c9a96e' },
+  cardFeatured: { border: '2px solid #c9a96e' },
   cardTop: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 },
   guestAvatar: { width: 42, height: 42, background: 'linear-gradient(135deg,#2d5a4e,#1a3a30)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 16, flexShrink: 0 },
   guestName: { fontWeight: 600, fontSize: 14, color: '#1a2e2a' },
   roomTag: { fontSize: 11, color: '#2d5a4e', background: '#e8f4f0', padding: '2px 8px', borderRadius: 20, marginTop: 3, display: 'inline-block' },
   message: { fontFamily: "'Cormorant Garamond',serif", fontSize: 17, color: '#3a5a50', lineHeight: 1.7, marginBottom: 16, fontStyle: 'italic' },
   cardDate: { fontSize: 11, color: '#c0b090' },
+  editBtn: { background: '#e8eef4', color: '#3a5a7a', border: 'none', padding: '5px 12px', borderRadius: 7, fontSize: 12, cursor: 'pointer', fontWeight: 500 },
+  deleteBtn: { background: '#fde8e8', color: '#c0392b', border: 'none', padding: '5px 12px', borderRadius: 7, fontSize: 12, cursor: 'pointer', fontWeight: 500 },
 
   emptyState: { textAlign: 'center', padding: '60px 20px', background: 'white', borderRadius: 20 },
+
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' },
+  modal: { background: 'white', borderRadius: 16, padding: 32, width: '100%', maxWidth: 380 },
+
   toast: { position: 'fixed', bottom: 28, right: 28, padding: '14px 22px', borderRadius: 12, fontSize: 14, fontWeight: 500, zIndex: 300, background: '#1a2e2a', color: 'white', boxShadow: '0 8px 30px rgba(0,0,0,0.2)' },
 };
 
