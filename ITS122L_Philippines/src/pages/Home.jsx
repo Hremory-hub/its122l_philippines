@@ -186,26 +186,12 @@ const Home = () => {
       {/* ── ANNOUNCEMENTS ─────────────────────────────────────────────── */}
       {announcements.length > 0 && (
         <section style={S.announcements}>
-          <div style={S.sectionInner}>
-            <div style={S.sectionLabel}>Updates</div>
-            <h2 style={S.sectionTitle}>Latest Announcements</h2>
-            <div style={S.annGrid}>
-              {announcements.map(a => {
-                const t = tagStyle(a.tag);
-                return (
-                  <div key={a.id} style={S.annCard}>
-                    <div style={S.annImgPlaceholder}>
-                      {a.tag === 'event' ? '🌺' : a.tag === 'promo' ? '💆' : '🔧'}
-                    </div>
-                    <div style={S.annBody}>
-                      <span style={{ ...S.annTag, background: t.bg, color: t.color }}>{a.tag}</span>
-                      <h3 style={S.annTitle}>{a.title}</h3>
-                      <p style={S.annText}>{a.body}</p>
-                    </div>
-                  </div>
-                );
-              })}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 16, marginBottom: 8 }}>
+            <div>
+              <div style={S.sectionLabel}>Updates</div>
+              <h2 style={S.sectionTitle}>Latest Announcements</h2>
             </div>
+            <Link to="/announcements" style={S.btnPrimary}>View All</Link>
           </div>
         </section>
       )}

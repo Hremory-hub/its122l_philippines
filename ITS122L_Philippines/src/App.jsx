@@ -13,6 +13,7 @@ import Testimonials from './pages/Testimonials';
 import About from './pages/About';
 import Gallery from './pages/Gallery';
 import Contact from './pages/Contact';
+import Announcements from './pages/Announcements';
 
 const Layout = ({ children }) => (
   <>
@@ -74,6 +75,7 @@ function AppRoutes() {
       <Route path="/about" element={<Layout><About /></Layout>} />
       <Route path="/gallery" element={<Layout><Gallery /></Layout>} />
       <Route path="/contact" element={<Layout><Contact /></Layout>} />
+      <Route path="/announcements" element={<Layout><Announcements /></Layout>} />
     </Routes>
   );
 }
